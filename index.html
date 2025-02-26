@@ -12,6 +12,7 @@
             --text-color: #333;
             --card-width: 280px; /* Increased card width */
             --card-height: 420px; /* Increased card height */
+            --blue-color: #2196F3;
         }
         
         * {
@@ -77,6 +78,21 @@
         button:disabled {
             background-color: #ccc;
             cursor: not-allowed;
+        }
+        
+        .secondary-controls {
+            margin: 20px 0 40px;
+            display: none; /* Hidden initially */
+        }
+        
+        .restart-button {
+            background-color: var(--blue-color);
+            font-size: 0.9rem;
+            padding: 10px 20px;
+        }
+        
+        .restart-button:hover {
+            background-color: #1976D2;
         }
         
         .game-board {
@@ -269,6 +285,15 @@
             color: #388e3c;
         }
         
+        .dv-footnote {
+            font-size: 0.7rem;
+            color: #666;
+            text-align: center;
+            padding: 5px;
+            margin-top: auto;
+            border-top: 1px solid #eee;
+        }
+        
         .category-selection {
             text-align: center;
             margin: 20px 0;
@@ -352,9 +377,19 @@
             margin-bottom: 15px;
         }
         
-        .secondary-controls {
-            margin-top: 20px;
-            display: none; /* Hidden initially */
+        .highlight-rule {
+            background-color: #fff9c4;
+            padding: 3px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        .category-rule {
+            background-color: #e3f2fd;
+            padding: 5px 8px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 4px solid var(--blue-color);
         }
         
         @media (max-width: 900px) {
@@ -427,11 +462,7 @@
     <div class="game-container">
         <div class="controls">
             <button id="start-button">Start New Game</button>
-            <button id="deal-button" disabled>Deal Cards - Next Round</button>
-        </div>
-        
-        <div class="secondary-controls">
-            <button id="restart-button">Restart Game</button>
+            <button id="deal-button" disabled>Deal Cards</button>
         </div>
         
         <div class="category-selection" id="category-prompt">
@@ -458,6 +489,7 @@
                             <div class="food-stats" id="player-stats">
                                 <!-- Stats will be added here dynamically -->
                             </div>
+                            <div class="dv-footnote">%DV is a typical daily value of nutrient in a 2000 calorie/day diet (USDA)</div>
                         </div>
                     </div>
                 </div>
@@ -477,6 +509,7 @@
                             <div class="food-stats" id="computer-stats">
                                 <!-- Stats will be added here dynamically -->
                             </div>
+                            <div class="dv-footnote">%DV is a typical daily value of nutrient in a 2000 calorie/day diet (USDA)</div>
                         </div>
                     </div>
                 </div>
@@ -484,6 +517,10 @@
         </div>
         
         <div class="result-message" id="result-message"></div>
+        
+        <div class="secondary-controls">
+            <button id="restart-button" class="restart-button">Restart Game</button>
+        </div>
     </div>
     
     <div class="instructions">
@@ -491,13 +528,13 @@
         <p>UPF Slam is a card game about ultra-processed foods and their nutritional values:</p>
         <ul>
             <li>Each card represents a food item with ratings for Fats, Sugar, Protein, Sodium, and Additives</li>
-            <li>Higher numbers (% of daily value) are worse for health (except for Protein)</li>
+            <li class="highlight-rule">Higher numbers (% of daily value) are worse for health (except for Protein)</li>
             <li>For Additives, Low risk is better than High risk</li>
             <li>You and the computer will each draw a card</li>
             <li>Choose a nutritional category from your card by clicking on it</li>
-            <li>For Fats, Sugar, and Sodium: The player with the <strong>lower</strong> value wins</li>
-            <li>For Protein: The player with the <strong>higher</strong> value wins</li>
-            <li>For Additives: Low risk beats Medium risk, which beats High risk</li>
+            <li class="category-rule">For Fats, Sugar, and Sodium: The player with the <strong>lower</strong> value wins</li>
+            <li class="category-rule">For Protein: The player with the <strong>higher</strong> value wins</li>
+            <li class="category-rule">For Additives: Low risk beats Medium risk, which beats High risk</li>
             <li>The winner takes both cards</li>
             <li>The player with all cards at the end wins the game</li>
         </ul>
@@ -513,7 +550,8 @@
             currentComputerCard: null,
             gameStarted: false,
             turnActive: false,
-            selectedCategory: null
+            selectedCategory: null,
+            firstRound: true
         };
         
         // Food item data with nutritional values - now based on % daily values per serving
@@ -799,6 +837,10 @@
             gameState.gameStarted = true;
             gameState.turnActive = false;
             gameState.selectedCategory = null;
+            gameState.firstRound = true;
+            
+            // Set button text to "Deal Cards" for first round
+            dealButton.textContent = "Deal Cards";
             
             // Shuffle the deck
             shuffleDeck(gameState.deck);
@@ -831,6 +873,12 @@
         
         // Deal cards to player and computer
         function dealCards() {
+            // Change button text after first round
+            if (gameState.firstRound) {
+                dealButton.textContent = "Deal Cards - Next Round";
+                gameState.firstRound = false;
+            }
+            
             if (gameState.deck.length === 0) {
                 showResult("Game over! No more cards in the deck.");
                 dealButton.disabled = true;
@@ -928,8 +976,8 @@
                         playerStatValue.classList.add('risk-low');
                     }
                 } else {
-                    // Format numerical value with % for daily values
-                    playerStatValue.textContent = gameState.currentPlayerCard.stats[key] + '%';
+                    // Format numerical value with % DV for daily values
+                    playerStatValue.textContent = gameState.currentPlayerCard.stats[key] + '% DV';
                 }
                 
                 playerStatRow.appendChild(playerStatName);
@@ -961,8 +1009,8 @@
                         computerStatValue.classList.add('risk-low');
                     }
                 } else {
-                    // Format numerical value with % for daily values
-                    computerStatValue.textContent = gameState.currentComputerCard.stats[key] + '%';
+                    // Format numerical value with % DV for daily values
+                    computerStatValue.textContent = gameState.currentComputerCard.stats[key] + '% DV';
                 }
                 
                 computerStatRow.appendChild(computerStatName);
@@ -1097,15 +1145,15 @@
                 if (category === 'protein') {
                     // For protein, higher is better
                     if (result === 'win') {
-                        message = `You win! Your ${categoryLabel} (${playerValue}%) is higher than Computer's (${computerValue}%)`;
+                        message = `You win! Your ${categoryLabel} (${playerValue}% DV) is higher than Computer's (${computerValue}% DV)`;
                         gameState.playerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message win-message';
                     } else if (result === 'lose') {
-                        message = `You lose! Your ${categoryLabel} (${playerValue}%) is lower than Computer's (${computerValue}%)`;
+                        message = `You lose! Your ${categoryLabel} (${playerValue}% DV) is lower than Computer's (${computerValue}% DV)`;
                         gameState.computerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message lose-message';
                     } else {
-                        message = `Draw! Both have ${categoryLabel} value of ${playerValue}%`;
+                        message = `Draw! Both have ${categoryLabel} value of ${playerValue}% DV`;
                         gameState.playerCards.push(gameState.currentPlayerCard);
                         gameState.computerCards.push(gameState.currentComputerCard);
                         resultMessage.className = 'result-message draw-message';
@@ -1113,15 +1161,15 @@
                 } else {
                     // For fat, sugar, sodium - lower is better
                     if (result === 'win') {
-                        message = `You win! Your ${categoryLabel} (${playerValue}%) is lower than Computer's (${computerValue}%)`;
+                        message = `You win! Your ${categoryLabel} (${playerValue}% DV) is lower than Computer's (${computerValue}% DV)`;
                         gameState.playerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message win-message';
                     } else if (result === 'lose') {
-                        message = `You lose! Your ${categoryLabel} (${playerValue}%) is higher than Computer's (${computerValue}%)`;
+                        message = `You lose! Your ${categoryLabel} (${playerValue}% DV) is higher than Computer's (${computerValue}% DV)`;
                         gameState.computerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message lose-message';
                     } else {
-                        message = `Draw! Both have ${categoryLabel} value of ${playerValue}%`;
+                        message = `Draw! Both have ${categoryLabel} value of ${playerValue}% DV`;
                         gameState.playerCards.push(gameState.currentPlayerCard);
                         gameState.computerCards.push(gameState.currentComputerCard);
                         resultMessage.className = 'result-message draw-message';
