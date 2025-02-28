@@ -119,6 +119,28 @@
             color: var(--primary-color);
         }
         
+        .computer-label {
+            color: var(--accent-color);
+        }
+        
+        .active-selector {
+            position: relative;
+        }
+        
+        .active-selector::after {
+            content: "SELECTING";
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background-color: #FFC107;
+            color: #333;
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+        
         .score {
             font-size: 1.3rem;
             margin-bottom: 20px;
@@ -176,6 +198,10 @@
             font-weight: bold;
             text-align: center;
             padding: 20px;
+        }
+        
+        .computer-card .card-back {
+            background: linear-gradient(45deg, #e05263, #c41c30);
         }
         
         .card-back::after {
@@ -307,6 +333,16 @@
             display: none;
         }
         
+        .computer-selection {
+            background-color: #ffebee;
+            border: 2px solid var(--accent-color);
+        }
+        
+        .thinking {
+            display: inline-block;
+            font-size: 1.4rem;
+        }
+        
         @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(58, 123, 72, 0.4); }
             70% { box-shadow: 0 0 0 10px rgba(58, 123, 72, 0); }
@@ -361,6 +397,16 @@
             background-color: #e3f2fd;
             border-radius: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .turn-indicator {
+            font-weight: bold;
+            font-size: 1.1rem;
+            padding: 8px 15px;
+            background-color: #fff3cd;
+            border-radius: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
         
         .instructions {
@@ -465,8 +511,14 @@
             <button id="deal-button" disabled>Deal Cards</button>
         </div>
         
-        <div class="category-selection" id="category-prompt">
-            <p>👉 SELECT A NUTRITIONAL CATEGORY FROM YOUR CARD TO COMPARE 👈</p>
+        <div class="turn-indicator" id="turn-indicator">First round: Player selects category</div>
+        
+        <div class="category-selection" id="player-prompt">
+            <p>👉 SELECT A NUTRITIONAL CATEGORY FROM YOUR CARD 👈</p>
+        </div>
+        
+        <div class="category-selection computer-selection" id="computer-prompt">
+            <p>COMPUTER IS CHOOSING A CATEGORY<span class="thinking"></span></p>
         </div>
         
         <div class="game-info">
@@ -475,7 +527,7 @@
         </div>
         
         <div class="game-board">
-            <div class="player-area">
+            <div class="player-area" id="player-area">
                 <div class="player-label">You</div>
                 <div class="score">Cards Won: <span id="player-score">0</span></div>
                 <div class="card" id="player-card">
@@ -495,10 +547,10 @@
                 </div>
             </div>
             
-            <div class="player-area">
-                <div class="player-label">Computer</div>
+            <div class="player-area" id="computer-area">
+                <div class="player-label computer-label">Computer</div>
                 <div class="score computer-score">Cards Won: <span id="computer-score">0</span></div>
-                <div class="card" id="computer-card">
+                <div class="card computer-card" id="computer-card">
                     <div class="card-inner">
                         <div class="card-face card-back">
                             <div>Computer's Card</div>
@@ -531,7 +583,7 @@
             <li class="highlight-rule">Higher numbers (% of daily value) are worse for health (except for Protein)</li>
             <li>For Additives, Low risk is better than High risk</li>
             <li>You and the computer will each draw a card</li>
-            <li>Choose a nutritional category from your card by clicking on it</li>
+            <li>The winner of the previous round selects a nutritional category (you start first)</li>
             <li class="category-rule">For Fats, Sugar, and Sodium: The player with the <strong>lower</strong> value wins</li>
             <li class="category-rule">For Protein: The player with the <strong>higher</strong> value wins</li>
             <li class="category-rule">For Additives: Low risk beats Medium risk, which beats High risk</li>
@@ -541,6 +593,22 @@
     </div>
     
     <script>
+        // Add CSS animation for thinking dots
+        document.head.insertAdjacentHTML('beforeend', `
+            <style>
+                @keyframes thinking {
+                    0% { content: "."; }
+                    33% { content: ".."; }
+                    66% { content: "..."; }
+                }
+                
+                .thinking:after {
+                    content: "";
+                    animation: thinking 1.5s infinite;
+                }
+            </style>
+        `);
+        
         // Game data and state
         const gameState = {
             deck: [],
@@ -551,7 +619,10 @@
             gameStarted: false,
             turnActive: false,
             selectedCategory: null,
-            firstRound: true
+            firstRound: true,
+            currentTurn: 'player', // 'player' or 'computer'
+            lastWinner: 'player',  // Start with player as first selector
+            lastResult: null       // 'win', 'lose', or 'draw'
         };
         
         // Food item data with nutritional values - now based on % daily values per serving
@@ -807,6 +878,8 @@
         const restartButton = document.getElementById('restart-button');
         const playerCard = document.getElementById('player-card');
         const computerCard = document.getElementById('computer-card');
+        const playerArea = document.getElementById('player-area');
+        const computerArea = document.getElementById('computer-area');
         const playerStats = document.getElementById('player-stats');
         const computerStats = document.getElementById('computer-stats');
         const playerFoodName = document.getElementById('player-food-name');
@@ -815,11 +888,13 @@
         const computerFoodImage = document.getElementById('computer-food-image');
         const playerScore = document.getElementById('player-score');
         const computerScore = document.getElementById('computer-score');
-        const categoryPrompt = document.getElementById('category-prompt');
+        const playerPrompt = document.getElementById('player-prompt');
+        const computerPrompt = document.getElementById('computer-prompt');
         const resultMessage = document.getElementById('result-message');
         const remainingCards = document.getElementById('remaining-cards');
         const remainingRounds = document.getElementById('remaining-rounds');
         const secondaryControls = document.querySelector('.secondary-controls');
+        const turnIndicator = document.getElementById('turn-indicator');
         
         // Initialize the game
         startButton.addEventListener('click', startGame);
@@ -838,6 +913,9 @@
             gameState.turnActive = false;
             gameState.selectedCategory = null;
             gameState.firstRound = true;
+            gameState.currentTurn = 'player'; // Player always goes first in a new game
+            gameState.lastWinner = 'player';
+            gameState.lastResult = null;
             
             // Set button text to "Deal Cards" for first round
             dealButton.textContent = "Deal Cards";
@@ -848,6 +926,8 @@
             // Update UI
             playerCard.classList.remove('flipped');
             computerCard.classList.remove('flipped');
+            playerArea.classList.remove('active-selector');
+            computerArea.classList.remove('active-selector');
             playerStats.innerHTML = '';
             computerStats.innerHTML = '';
             playerFoodName.textContent = '';
@@ -864,8 +944,11 @@
             secondaryControls.style.display = 'block';
             dealButton.disabled = false;
             
-            categoryPrompt.style.display = 'none';
+            // Reset prompts and messages
+            playerPrompt.style.display = 'none';
+            computerPrompt.style.display = 'none';
             resultMessage.style.display = 'none';
+            turnIndicator.textContent = "First round: Player selects category";
             
             // Clear any previous stat classes
             clearStatClasses();
@@ -888,8 +971,12 @@
             // Reset UI state
             playerCard.classList.remove('flipped');
             computerCard.classList.remove('flipped');
+            playerArea.classList.remove('active-selector');
+            computerArea.classList.remove('active-selector');
             clearStatClasses();
             resultMessage.style.display = 'none';
+            playerPrompt.style.display = 'none';
+            computerPrompt.style.display = 'none';
             
             // Deal cards if available
             if (gameState.deck.length >= 2) {
@@ -913,20 +1000,48 @@
             remainingCards.textContent = gameState.deck.length;
             remainingRounds.textContent = Math.floor(gameState.deck.length / 2);
             
-            // Flip player card to show front
-            setTimeout(() => {
-                playerCard.classList.add('flipped');
-                gameState.turnActive = true;
-                categoryPrompt.style.display = 'block';
-            }, 500);
-            
-            // Add event listeners to player stats for selection
-            const statRows = playerStats.querySelectorAll('.stat-row');
-            statRows.forEach(row => {
-                row.addEventListener('click', handleCategorySelection);
-            });
+            // Set up the turn based on last winner
+            setupTurn();
             
             dealButton.disabled = true;
+        }
+        
+        // Setup whose turn it is to select a category
+        function setupTurn() {
+            gameState.currentTurn = gameState.lastWinner;
+            gameState.turnActive = true;
+            
+            // Update turn indicator
+            if (gameState.currentTurn === 'player') {
+                turnIndicator.textContent = "Your turn to select a category";
+                
+                // Only flip the player's card
+                setTimeout(() => {
+                    playerCard.classList.add('flipped');
+                    playerArea.classList.add('active-selector');
+                    playerPrompt.style.display = 'block';
+                    
+                    // Add event listeners to player stats for selection
+                    const statRows = playerStats.querySelectorAll('.stat-row');
+                    statRows.forEach(row => {
+                        row.addEventListener('click', handlePlayerSelection);
+                    });
+                }, 500);
+            } else {
+                turnIndicator.textContent = "Computer's turn to select a category";
+                
+                // Only flip the computer's card
+                setTimeout(() => {
+                    computerCard.classList.add('flipped');
+                    computerArea.classList.add('active-selector');
+                    computerPrompt.style.display = 'block';
+                    
+                    // Computer makes a selection after a delay
+                    setTimeout(() => {
+                        handleComputerSelection();
+                    }, 2000);
+                }, 500);
+            }
         }
         
         // Update the card display with current card information
@@ -984,7 +1099,7 @@
                 playerStatRow.appendChild(playerStatValue);
                 playerStats.appendChild(playerStatRow);
                 
-                // Computer card stats (same structure but no click event)
+                // Computer card stats (same structure)
                 const computerStatRow = document.createElement('div');
                 computerStatRow.classList.add('stat-row');
                 computerStatRow.dataset.category = key;
@@ -1019,9 +1134,9 @@
             }
         }
         
-        // Handle category selection by the player
-        function handleCategorySelection(event) {
-            if (!gameState.turnActive) return;
+        // Handle player's category selection
+        function handlePlayerSelection(event) {
+            if (!gameState.turnActive || gameState.currentTurn !== 'player') return;
             
             const selectedRow = event.currentTarget;
             const category = selectedRow.dataset.category;
@@ -1029,96 +1144,186 @@
             // Clear previous selections
             clearStatClasses();
             
-            // Highlight selected category
-            selectedRow.classList.add('selected');
+            // Process the selection
+            processSelection(category, 'player');
+        }
+        
+        // Handle computer's category selection
+        function handleComputerSelection() {
+            if (!gameState.turnActive || gameState.currentTurn !== 'computer') return;
             
-            // Find the same category in computer's card
+            // Computer AI logic to choose the best category based only on its own card
+            const category = getComputerChoice();
+            
+            // Highlight the selected category in computer's card
             const computerStatRow = computerStats.querySelector(`.stat-row[data-category="${category}"]`);
+            computerStatRow.classList.add('selected');
             
-            // Compare values
-            let result;
-            if (category === 'additives') {
-                // For additives, compare risk levels (Low > Medium > High)
-                const playerRisk = gameState.currentPlayerCard.stats[category];
-                const computerRisk = gameState.currentComputerCard.stats[category];
-                
-                // Convert risk to numeric value for comparison
-                const riskValue = {
-                    'Low': 3,
-                    'Medium': 2,
-                    'High': 1
-                };
-                
-                if (riskValue[playerRisk] > riskValue[computerRisk]) {
-                    selectedRow.classList.add('winning');
-                    computerStatRow.classList.add('losing');
-                    result = 'win';
-                } else if (riskValue[playerRisk] < riskValue[computerRisk]) {
-                    selectedRow.classList.add('losing');
-                    computerStatRow.classList.add('winning');
-                    result = 'lose';
-                } else {
-                    selectedRow.classList.add('draw');
-                    computerStatRow.classList.add('draw');
-                    result = 'draw';
-                }
-            } else if (category === 'protein') {
-                // For protein, higher is better
-                const playerValue = gameState.currentPlayerCard.stats[category];
-                const computerValue = gameState.currentComputerCard.stats[category];
-                
-                if (playerValue > computerValue) {
-                    selectedRow.classList.add('winning');
-                    computerStatRow.classList.add('losing');
-                    result = 'win';
-                } else if (playerValue < computerValue) {
-                    selectedRow.classList.add('losing');
-                    computerStatRow.classList.add('winning');
-                    result = 'lose';
-                } else {
-                    selectedRow.classList.add('draw');
-                    computerStatRow.classList.add('draw');
-                    result = 'draw';
-                }
-            } else {
-                // For fat, sugar, sodium - lower is better
-                const playerValue = gameState.currentPlayerCard.stats[category];
-                const computerValue = gameState.currentComputerCard.stats[category];
-                
-                if (playerValue < computerValue) {
-                    selectedRow.classList.add('winning');
-                    computerStatRow.classList.add('losing');
-                    result = 'win';
-                } else if (playerValue > computerValue) {
-                    selectedRow.classList.add('losing');
-                    computerStatRow.classList.add('winning');
-                    result = 'lose';
-                } else {
-                    selectedRow.classList.add('draw');
-                    computerStatRow.classList.add('draw');
-                    result = 'draw';
+            // Process the selection
+            processSelection(category, 'computer');
+        }
+        
+        // Computer AI to select the best category - now only using its own card
+        function getComputerChoice() {
+            // Gets the computer's card information
+            const computerCard = gameState.currentComputerCard;
+            
+            // Fair computer strategy - choose based only on your own card's strengths
+            const strengths = {};
+            
+            // For Fats, Sugar, Sodium - lower values are better
+            strengths.fats = 100 - computerCard.stats.fats; // Invert so higher number = better
+            strengths.sugar = 100 - computerCard.stats.sugar;
+            strengths.sodium = 100 - computerCard.stats.sodium;
+            
+            // For Protein - higher is better
+            strengths.protein = computerCard.stats.protein;
+            
+            // For Additives - convert to numeric strength
+            const additiveStrength = {
+                'Low': 90,
+                'Medium': 50,
+                'High': 10
+            };
+            strengths.additives = additiveStrength[computerCard.stats.additives];
+            
+            // Find the strongest category
+            let bestCategory = 'protein'; // Default
+            let bestStrength = 0;
+            
+            for (const [category, strength] of Object.entries(strengths)) {
+                if (strength > bestStrength) {
+                    bestStrength = strength;
+                    bestCategory = category;
                 }
             }
             
-            // Flip computer card
-            setTimeout(() => {
-                computerCard.classList.add('flipped');
-            }, 500);
+            // Add some randomness (20% chance to pick randomly)
+            if (Math.random() < 0.2) {
+                const categories = Object.keys(strengths);
+                return categories[Math.floor(Math.random() * categories.length)];
+            }
             
-            // Process result
-            setTimeout(() => {
-                processRound(result, category);
-            }, 1500);
-            
+            return bestCategory;
+        }
+        
+        // Process category selection from either player or computer
+        function processSelection(category, selector) {
+            gameState.selectedCategory = category;
             gameState.turnActive = false;
-            categoryPrompt.style.display = 'none';
+            
+            // Hide prompts
+            playerPrompt.style.display = 'none';
+            computerPrompt.style.display = 'none';
+            
+            // Highlight selected category on appropriate card
+            const selectedRow = (selector === 'player') ? 
+                playerStats.querySelector(`.stat-row[data-category="${category}"]`) :
+                computerStats.querySelector(`.stat-row[data-category="${category}"]`);
+            
+            // Add selected class
+            selectedRow.classList.add('selected');
+            
+            // Now flip the other card to reveal it
+            if (selector === 'player') {
+                setTimeout(() => {
+                    computerCard.classList.add('flipped');
+                }, 500);
+            } else {
+                setTimeout(() => {
+                    playerCard.classList.add('flipped');
+                }, 500);
+            }
+            
+            // Compare values
+            setTimeout(() => {
+                let result;
+                if (category === 'additives') {
+                    // For additives, compare risk levels (Low > Medium > High)
+                    const playerRisk = gameState.currentPlayerCard.stats[category];
+                    const computerRisk = gameState.currentComputerCard.stats[category];
+                    
+                    // Convert risk to numeric value for comparison
+                    const riskValue = {
+                        'Low': 3,
+                        'Medium': 2,
+                        'High': 1
+                    };
+                    
+                    if (riskValue[playerRisk] > riskValue[computerRisk]) {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('winning');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('losing');
+                        result = 'win';
+                    } else if (riskValue[playerRisk] < riskValue[computerRisk]) {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('losing');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('winning');
+                        result = 'lose';
+                    } else {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('draw');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('draw');
+                        result = 'draw';
+                    }
+                } else if (category === 'protein') {
+                    // For protein, higher is better
+                    const playerValue = gameState.currentPlayerCard.stats[category];
+                    const computerValue = gameState.currentComputerCard.stats[category];
+                    
+                    if (playerValue > computerValue) {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('winning');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('losing');
+                        result = 'win';
+                    } else if (playerValue < computerValue) {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('losing');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('winning');
+                        result = 'lose';
+                    } else {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('draw');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('draw');
+                        result = 'draw';
+                    }
+                } else {
+                    // For fat, sugar, sodium - lower is better
+                    const playerValue = gameState.currentPlayerCard.stats[category];
+                    const computerValue = gameState.currentComputerCard.stats[category];
+                    
+                    if (playerValue < computerValue) {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('winning');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('losing');
+                        result = 'win';
+                    } else if (playerValue > computerValue) {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('losing');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('winning');
+                        result = 'lose';
+                    } else {
+                        playerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('draw');
+                        computerStats.querySelector(`.stat-row[data-category="${category}"]`).classList.add('draw');
+                        result = 'draw';
+                    }
+                }
+                
+                // Process the result after comparison
+                processRound(result, category, selector);
+            }, 1500);
         }
         
         // Process the round result
-        function processRound(result, category) {
+        function processRound(result, category, selector) {
+            // Store the result for next round
+            gameState.lastResult = result;
+            
             // Create message for the result
             let message = '';
             const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
+            
+            // Update who gets to select next (the winner)
+            if (result === 'win') {
+                gameState.lastWinner = 'player';
+            } else if (result === 'lose') {
+                gameState.lastWinner = 'computer';
+            } else {
+                // On a draw, the selector keeps initiative
+                gameState.lastWinner = selector;
+            }
             
             if (category === 'additives') {
                 const playerRisk = gameState.currentPlayerCard.stats[category];
@@ -1126,10 +1331,20 @@
                 
                 if (result === 'win') {
                     message = `You win! Your ${categoryLabel} Risk (${playerRisk}) is better than Computer's (${computerRisk})`;
+                    if (selector === 'player') {
+                        message += " - You chose well!";
+                    } else {
+                        message += " - Computer's choice backfired!";
+                    }
                     gameState.playerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                     resultMessage.className = 'result-message win-message';
                 } else if (result === 'lose') {
                     message = `You lose! Your ${categoryLabel} Risk (${playerRisk}) is worse than Computer's (${computerRisk})`;
+                    if (selector === 'player') {
+                        message += " - Not the best choice!";
+                    } else {
+                        message += " - Computer chose wisely!";
+                    }
                     gameState.computerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                     resultMessage.className = 'result-message lose-message';
                 } else {
@@ -1146,10 +1361,20 @@
                     // For protein, higher is better
                     if (result === 'win') {
                         message = `You win! Your ${categoryLabel} (${playerValue}% DV) is higher than Computer's (${computerValue}% DV)`;
+                        if (selector === 'player') {
+                            message += " - You chose well!";
+                        } else {
+                            message += " - Computer's choice backfired!";
+                        }
                         gameState.playerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message win-message';
                     } else if (result === 'lose') {
                         message = `You lose! Your ${categoryLabel} (${playerValue}% DV) is lower than Computer's (${computerValue}% DV)`;
+                        if (selector === 'player') {
+                            message += " - Not the best choice!";
+                        } else {
+                            message += " - Computer chose wisely!";
+                        }
                         gameState.computerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message lose-message';
                     } else {
@@ -1162,10 +1387,20 @@
                     // For fat, sugar, sodium - lower is better
                     if (result === 'win') {
                         message = `You win! Your ${categoryLabel} (${playerValue}% DV) is lower than Computer's (${computerValue}% DV)`;
+                        if (selector === 'player') {
+                            message += " - You chose well!";
+                        } else {
+                            message += " - Computer's choice backfired!";
+                        }
                         gameState.playerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message win-message';
                     } else if (result === 'lose') {
                         message = `You lose! Your ${categoryLabel} (${playerValue}% DV) is higher than Computer's (${computerValue}% DV)`;
+                        if (selector === 'player') {
+                            message += " - Not the best choice!";
+                        } else {
+                            message += " - Computer chose wisely!";
+                        }
                         gameState.computerCards.push(gameState.currentPlayerCard, gameState.currentComputerCard);
                         resultMessage.className = 'result-message lose-message';
                     } else {
@@ -1176,6 +1411,11 @@
                     }
                 }
             }
+            
+            // Update turn indicator for next round
+            turnIndicator.textContent = gameState.lastWinner === 'player' ? 
+                "Next round: Your turn to select" : 
+                "Next round: Computer's turn to select";
             
             // Update scores
             updateScores();
@@ -1219,6 +1459,11 @@
             resultMessage.textContent = finalMessage;
             resultMessage.style.display = 'block';
             dealButton.disabled = true;
+            turnIndicator.textContent = "Game Over! Check the final score.";
+            
+            // Remove the selector indicators
+            playerArea.classList.remove('active-selector');
+            computerArea.classList.remove('active-selector');
         }
         
         // Show a result message
@@ -1232,6 +1477,7 @@
         function clearStatClasses() {
             const allStatRows = document.querySelectorAll('.stat-row');
             allStatRows.forEach(row => {
+                row.removeEventListener('click', handlePlayerSelection);
                 row.classList.remove('selected', 'winning', 'losing', 'draw');
             });
         }
