@@ -14,6 +14,7 @@ document.head.insertAdjacentHTML('beforeend', `
     </style>
 `);
 
+/*
 // Basic copy protection
 (function() {
     // Disable right-clicking
@@ -36,6 +37,7 @@ document.head.insertAdjacentHTML('beforeend', `
     window._gameVersion = "1.0";
     window._gameSignature = "UPF_" + Math.random().toString(36).substring(2, 15);
 })();
+*/
 
 // Accordion functionality
 const accordionHeader = document.querySelector('.accordion-header');
